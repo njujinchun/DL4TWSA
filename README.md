@@ -1,2 +1,3 @@
 # DL4TWSA
-A deep learning model for predicting terrestrial water storage anomalies (TWSA) derived from GRACE and GRACE-FO data
+A Deep Learning Model for Near-Real-Time Monitoring of Global Terrestrial Water Storage Anomalies and Hydrological Droughts
+# Coming upon publication of the manuscript
