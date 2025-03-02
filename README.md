@@ -14,7 +14,7 @@ The BCNN model takes the following inputs:
 - These ERA5-Land variables are included for both:  
   - The past 12 months  
   - The 3-month latency period  
-##
+## Illustration of inputs and outputs of the BCNN model
 ![](https://github.com/njujinchun/DL4TWSA/blob/main/imgs/BCNN_inputs_outputs.jpg)
 
 ## Dependencies
