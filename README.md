@@ -25,7 +25,7 @@ The BCNN model takes the following inputs:
 * scipy
 
 ## Datasets for training and testing
-The datasets used for BCNN training and testing, derived from [JPL GRACE/FO Mascon](https://doi.org/10.5067/TEMSC-3JC63) and [ERA5-Land](https://doi.org/10.24381/cds.68d2bb30) datasets, are available at [Google Drive](https://drive.google.com/drive/folders/152Bqgf9-Q8R2mGP-h75gGhsE2FKg7OcA?usp=sharing). One can download the datasets, place them it in the 'datasets' subfolder, and train the BCNN model to reproduce our results.
+The datasets used for BCNN training and testing, derived from [JPL GRACE/FO Mascon](https://doi.org/10.5067/TEMSC-3JC634) and [ERA5-Land](https://doi.org/10.24381/cds.68d2bb30) datasets, are available at [Google Drive](https://drive.google.com/drive/folders/152Bqgf9-Q8R2mGP-h75gGhsE2FKg7OcA?usp=sharing). One can download the datasets, place them it in the 'datasets' subfolder, and train the BCNN model to reproduce our results.
 
 ## Installation
 To use this implementation, clone the repository and execute the code:
