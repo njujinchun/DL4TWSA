@@ -8,6 +8,7 @@ import torch
 import numpy as np
 from time import time
 from args import args
+from models.RRDB import Net
 from models.bayes_nn import BayesNN
 from models.svgd import SVGD
 from utils.funcs import load_data, plot_pred, plot_nse, save_stats
@@ -34,8 +35,7 @@ print('Number of training samples: {}'.format(args.ntrain))
 print('Loaded data!')
 
 # deterministic NN
-from models.RRDB import Net
-model = Net(stats['ic'], stats['oc'], nf=args.features,ss=args.ss).to(device)
+model = Net(stats['ic'], stats['oc'], nf=args.features,act_fun=args.act_fun).to(device)
 
 print(model)
 # Bayesian NN
@@ -52,10 +52,6 @@ def test(epoch, logger):
         2. predictive mean
         3. error of the above two
         4. two sigma of predictive variance
-
-    Args:
-        test_fixed (Tensor): (2, N, *), `test_fixed[0]` is the fixed test input, 
-            `test_fixed[1]` is the corresponding target
     """
     bayes_nn.eval()
     
@@ -83,6 +79,7 @@ def test(epoch, logger):
             epoch, r2_test, mnlp_test))
 
     if epoch % args.plot_freq == 0:
+        # plot predictions
         n_samples = 3
         idx = torch.LongTensor(np.random.choice(xtest.shape[0] - args.ntf + 1, n_samples, replace=False))
         for i in range(n_samples):
@@ -96,6 +93,7 @@ def test(epoch, logger):
             data = np.concatenate((ytarget, ypred[0], ytarget - ypred[0], np.sqrt(ypred_var[0])), axis=0)
             plot_pred(data, epoch, idx[i], land_mask, args, args.pred_dir)
     if epoch == args.epochs:
+        # save the final predictions
         n_samples = ytest.shape[0]
         ypred, ypred_var = np.zeros_like(ytest), np.zeros_like(ytest)
         for i in range(n_samples):
