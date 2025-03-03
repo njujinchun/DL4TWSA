@@ -1,5 +1,21 @@
+import numpy as np
 import torch.nn as nn
 import torch
+import torch.nn.functional as F
+from torch.autograd import Variable
+
+
+class mish(nn.Module):
+    '''
+    Applies the mish function element-wise:
+    mish(x) = x * tanh(softplus(x)) = x * tanh(ln(1 + exp(x)))
+    See additional documentation for mish class.
+    '''
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return x * torch.tanh(F.softplus(x))
 
 
 ##########################################################################
@@ -13,8 +29,10 @@ class spatial_attn_layer(nn.Module):
         )
 
     def forward(self, x):
+        # import pdb;pdb.set_trace()
         x_compress = torch.cat( (torch.max(x,1)[0].unsqueeze(1), torch.mean(x,1).unsqueeze(1)), dim=1)
         scale = self.spatial(x_compress)
+        # scale = torch.sigmoid(x_out) # broadcasting
         return x * scale
 
 
@@ -40,7 +58,7 @@ class ca_layer(nn.Module):
 
 
 ##########################################################################
-##---------- spatial and channel attention module (SCAM) ----------
+##---------- Spatial Channel Attention Module (SCAM) ----------
 class SCAM(nn.Module):
     def __init__(self, nf, reduction=24, bias=False, act=nn.PReLU()):
         super(SCAM, self).__init__()
@@ -75,14 +93,14 @@ class DenseResidualBlock(nn.Module):
             layers += [act]
             return nn.Sequential(*layers)
 
-        # each RDB has 4 conv layers, the input and output are concatenated at the end
         self.b1 = block(in_nf=1 * nf)
         self.b2 = block(in_nf=2 * nf)
         self.b3 = block(in_nf=3 * nf)
         self.b4 = block(in_nf=4 * nf)
+        # self.b5 = block(in_nf=5 * nf)
+        # self.blocks = [self.b1, self.b2, self.b3, self.b4, self.b5]
         self.blocks = [self.b1, self.b2, self.b3, self.b4]
 
-        # Dual Attention Module implemented on both input and output of the residual dense block
         self.dua_in = SCAM(nf,act=act)
         self.dua_res = SCAM(nf,act=act)
 
@@ -102,12 +120,9 @@ class RRDB(nn.Module):
     """
     def __init__(self, nf, act=nn.ReLU()):
         super(RRDB, self).__init__()
-
-        # each RRDB has 3 RDBs
         self.dense_blocks = nn.Sequential(
-            DenseResidualBlock(nf,act=act), DenseResidualBlock(nf,act=act), DenseResidualBlock(nf,act=act)
+            DenseResidualBlock(nf,act=act), DenseResidualBlock(nf,act=act), DenseResidualBlock(nf,act=act)#, DenseResidualBlock(nf,act=act)
         )
-        # Dual Attention Module implemented on both input and output of the RRDB
         self.dua_in = SCAM(nf,act=act)
         self.dua_res = SCAM(nf,act=act)
 
@@ -120,9 +135,6 @@ class RRDB(nn.Module):
 
 
 class down_samp(nn.Module):
-    """
-    down_samp: downsampling module using strided convolution
-    """
     def __init__(self, nf=64, act=nn.ReLU()):
         super(down_samp, self).__init__()
         self.conv = nn.Sequential(
@@ -136,9 +148,6 @@ class down_samp(nn.Module):
 
 
 class up_samp(nn.Module):
-    """
-    up_samp: upsampling module using transposed convolution
-    """
     def __init__(self, nf=64, act=nn.ReLU()):
         super(up_samp, self).__init__()
         self.convT = nn.Sequential(
@@ -152,65 +161,57 @@ class up_samp(nn.Module):
 
 
 class Net(nn.Module):
-    def __init__(self, in_chan, out_chan, nf=64, ss=True, act=nn.PReLU()):
+    def __init__(self, in_chan, out_chan, nf=64, act_fun='ReLU'):
         super(Net, self).__init__()
 
         """ ARCHITECTURE 
         in_chan: number of input channels
         out_chan: number of output channels
         nf: number of feature maps
-        ss: use series stationarization or not
-        act: activation function
+        act_fun: activation function
         """
 
-        self.ss = ss
+        if act_fun == 'PReLU':
+            act = nn.PReLU()
+        elif act_fun == 'SiLU':
+            act = nn.SiLU()
+        elif act_fun == 'mish':
+            act = mish()
+        else:
+            act = nn.ReLU(inplace=False)
+
         self.features = nn.Sequential()
 
-        # the first convolutional layer, also acts as a down-sampling layer
         self.features.add_module('inc', nn.Conv2d(in_chan, nf, kernel_size=3, stride=2, padding=1, bias=True))
-
-        # the first RRDB block followed by down-sampling
         self.features.add_module('rbE1', RRDB(nf=nf,act=act))
         self.features.add_module('down1', down_samp(nf=nf,act=act))
 
-        # the second RRDB block followed by down-sampling
         self.features.add_module('rbE2', RRDB(nf=nf,act=act))
         self.features.add_module('down2', down_samp(nf=nf,act=act))
 
-        # the central RRDB block
         self.features.add_module('rbC', RRDB(nf=nf,act=act))
 
-        # the first up-sampling block followed by the third RRDB block
         self.features.add_module('up2', up_samp(nf=nf,act=act))
         self.features.add_module('rbD2', RRDB(nf=nf,act=act))
 
-        # the second up-sampling block followed by the fourth RRDB block
         self.features.add_module('up1', up_samp(nf=nf,act=act))
         self.features.add_module('rbD1', RRDB(nf=nf,act=act))
 
-        # the final up-sampling block followed by a 1x1 convolutional layer
         self.features.add_module('up0', up_samp(nf=nf,act=act))
         self.features.add_module('outc', nn.Conv2d(nf, out_chan, kernel_size=1, bias=True))
 
     def forward(self, x, hist):
-        '''
-        :param x: the tensor of auxiliary data during the historical period and the target period
-        :param hist: the tensor of historical data of the target variable
-        :return: the tensor of predicted target variable
-        '''
-        if self.ss:
-            # Series Stationarization by normalization using local mean and variance
-            means = x.mean(1, keepdim=True).detach()
-            x = x - means
-            stdev = torch.sqrt(
-                torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5)
-            x /= stdev
-
-            meansh = hist.mean(1, keepdim=True).detach()
-            hist = hist - meansh
-            stdevh = torch.sqrt(
-                torch.var(hist, dim=1, keepdim=True, unbiased=False) + 1e-5)
-            hist /= stdevh
+        ## Series standarization via local normalization ###
+        means = x.mean(1, keepdim=True).detach()
+        x = x - means
+        stdev = torch.sqrt(
+            torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5)
+        x /= stdev
+        meansh = hist.mean(1, keepdim=True).detach()
+        hist = hist - meansh
+        stdevh = torch.sqrt(
+            torch.var(hist, dim=1, keepdim=True, unbiased=False) + 1e-5)
+        hist /= stdevh
 
         b, t, c, h, w = x.shape
         x = x.permute(0, 2, 1, 3, 4).reshape(b, t * c, h, w)
@@ -240,12 +241,11 @@ class Net(nn.Module):
         x11 = self.features.up0(x10)
         y = self.features.outc(x11)
 
-        if self.ss:
-            ### De-Normalization using local mean and variance of historical data of the target variable
-            y = y * \
-                (stdevh[:, 0, [-1]].repeat(1, y.shape[1], 1, 1))
-            y = y + \
-                (meansh[:, 0, [-1]].repeat(1, y.shape[1], 1, 1))
+        ### De-Normalization
+        y = y * \
+            (stdevh[:, 0, [-1]].repeat(1, y.shape[1], 1, 1))
+        y = y + \
+            (meansh[:, 0, [-1]].repeat(1, y.shape[1], 1, 1))
 
         return y
 
